@@ -516,8 +516,28 @@ void RCUpdate::Run()
 		/* publish rc_channels topic even if signal is invalid, for debug */
 		_rc_channels_pub.publish(_rc);
 
+		/* check if the R/C enabled switch is set*/
+		auto check_rc_enable_switch = [this]() {
+			bool rc_enabled = true;
+
+			if (_param_rc_map_rc_enable.get() > 0) {
+				int enable_channel = _param_rc_map_rc_enable.get() - 1;
+				const float value_raw = _rc.channels[enable_channel];
+				const float value_scaled = (0.5f * value_raw) + 0.5f; //Scale value from [-1, 1] to [0,1]
+				const float threshold = _param_rc_enablesw_th.get();
+				rc_enabled = (threshold > 0) ?
+					     (value_scaled > threshold) :       //True when switch value is higher than magnitude threshold
+					     (value_scaled < threshold * -1.f); //True when switch value is lower than magnitude of threshold
+			}
+
+			return rc_enabled;
+		};
+		const bool rc_inputs_enabled = (channel_count_stable && input_source_stable && check_rc_enable_switch())
+					       || _rc.signal_lost;
+		_rc_inputs_enabled = rc_inputs_enabled;
+
 		// only publish manual control if the signal is present and regularly updating
-		if (input_source_stable && channel_count_stable && !_rc_signal_lost_hysteresis.get_state()) {
+		if (_rc_inputs_enabled && input_source_stable && channel_count_stable && !_rc_signal_lost_hysteresis.get_state()) {
 
 			if ((input_rc.timestamp_last_signal > _last_timestamp_signal)
 			    && (input_rc.timestamp_last_signal < _last_timestamp_signal + VALID_DATA_MIN_INTERVAL_US)) {
@@ -745,6 +765,8 @@ int RCUpdate::print_status()
 				     _parameters.dz[i], _parameters.rev[i]);
 		}
 	}
+
+	PX4_INFO_RAW("R/C Inputs Enabled %d\n", _rc_inputs_enabled?1:0);
 
 	perf_print_counter(_loop_perf);
 	perf_print_counter(_loop_interval_perf);

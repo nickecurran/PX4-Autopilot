@@ -44,6 +44,8 @@ public:
 	void UpdateManualSwitches(const hrt_abstime &timestamp_sample) { RCUpdate::UpdateManualSwitches(timestamp_sample); }
 	void updateParams() { RCUpdate::updateParams(); }
 	void setChannel(size_t index, float channel_value) { _rc.channels[index] = channel_value; }
+	bool rc_inputs_enabled()const {return _rc_inputs_enabled;}
+	void run() {RCUpdate::Run();}
 };
 
 class RCUpdateTest : public ::testing::Test, ModuleParams
@@ -134,7 +136,10 @@ public:
 		(ParamInt<px4::params::RC_MAP_FLTMODE>) _param_rc_map_fltmode,
 		(ParamInt<px4::params::RC_MAP_FLTM_BTN>) _param_rc_map_fltm_btn,
 		(ParamInt<px4::params::RC_MAP_RETURN_SW>) _param_rc_map_return_sw,
-		(ParamFloat<px4::params::RC_RETURN_TH>) _param_rc_return_th
+		(ParamFloat<px4::params::RC_RETURN_TH>) _param_rc_return_th,
+
+		(ParamInt<px4::params::RC_MAP_RC_ENABLE>) _param_rc_map_rc_enable,
+		(ParamFloat<px4::params::RC_ENABLESW_TH>) _param_rc_enable_th
 	)
 };
 
@@ -232,4 +237,71 @@ TEST_F(RCUpdateTest, ReturnSwitchNegativeThresholds)
 
 	checkReturnSwitch(1.f, -.001f, 3); // Above minimum threshold -> SWITCH_POS_OFF
 	checkReturnSwitch(-1.f, -.001f, 1); // Slightly below minimum threshold -> SWITCH_POS_OFF
+}
+
+
+TEST_F(RCUpdateTest, RCEnableSwitch)
+{
+	uORB::Publication<input_rc_s> _rc_channels_pub{ORB_ID(input_rc)};
+
+	input_rc_s input_rc;
+	memset(&input_rc, 0, sizeof(input_rc));
+	input_rc.channel_count = 18;
+	input_rc.input_source = input_rc_s::RC_INPUT_SOURCE_PX4FMU_CRSF;
+
+	auto run_once = [&]() {
+		auto now = hrt_absolute_time();
+		auto end_total = now + 250_ms;	//RC update stable hysteresis time is 100 ms
+		auto next_send = now;
+
+		while (now <= end_total) {
+			if (now >= next_send) {
+				input_rc.timestamp_last_signal = now - 1; //Make it slightly in the past to make the Run call happy
+				_rc_channels_pub.publish(input_rc);
+				next_send = now + 10_ms; //100Hz
+			}
+
+			_rc_update.run();
+
+			now = hrt_absolute_time();
+		}
+	};
+
+	//Test RC enable switch not set
+	_param_rc_map_rc_enable.set(0);
+	_param_rc_map_rc_enable.commit();
+	input_rc.values[17] = 1000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), true);
+	input_rc.values[17] = 2000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), true);
+
+	//Test RC enable switch set, with positive enable threshold
+	_param_rc_map_rc_enable.set(18);
+	_param_rc_map_rc_enable.commit();
+	_param_rc_enable_th.set(0.75);
+	_param_rc_enable_th.commit();
+	//First run once without switch set and make sure R/C enabled is not asserted
+	input_rc.values[17] = 1000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), false);
+	//Now run with the switch set and make sure R/C enabled IS asserted
+	input_rc.values[17] = 2000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), true);
+
+	//Test RC enable switch set, with negative enable threshold
+	_param_rc_map_rc_enable.set(18);
+	_param_rc_map_rc_enable.commit();
+	_param_rc_enable_th.set(-0.75);
+	_param_rc_enable_th.commit();
+	//First run once with switch not set (highest channel value), and ensure that R/C enabled deasserts
+	input_rc.values[17] = 2000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), false);
+	//Now run with the switch set (lowest channel value) and make sure R/C enabled IS asserted
+	input_rc.values[17] = 1000;
+	run_once();
+	EXPECT_EQ(_rc_update.rc_inputs_enabled(), true);
 }

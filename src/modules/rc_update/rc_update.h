@@ -198,6 +198,8 @@ protected:
 	perf_counter_t _loop_interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": cycle interval")};
 	perf_counter_t _valid_data_interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": valid data interval")};
 
+	bool _rc_inputs_enabled{true};
+
 	DEFINE_PARAMETERS(
 
 		(ParamInt<px4::params::RC_MAP_ROLL>) _param_rc_map_roll,
@@ -218,6 +220,7 @@ protected:
 		(ParamInt<px4::params::RC_MAP_TRANS_SW>) _param_rc_map_trans_sw,
 		(ParamInt<px4::params::RC_MAP_GEAR_SW>) _param_rc_map_gear_sw,
 		(ParamInt<px4::params::RC_MAP_FLTM_BTN>) _param_rc_map_fltm_btn,
+		(ParamInt<px4::params::RC_MAP_RC_ENABLE>) _param_rc_map_rc_enable,
 
 		(ParamInt<px4::params::RC_MAP_AUX1>) _param_rc_map_aux1,
 		(ParamInt<px4::params::RC_MAP_AUX2>) _param_rc_map_aux2,
@@ -241,6 +244,7 @@ protected:
 		(ParamFloat<px4::params::RC_RETURN_TH>) _param_rc_return_th,
 		(ParamFloat<px4::params::RC_ENG_MOT_TH>) _param_rc_eng_mot_th,
 		(ParamFloat<px4::params::RC_PAYLOAD_TH>) _param_rc_payload_th,
+		(ParamFloat<px4::params::RC_ENABLESW_TH>) _param_rc_enablesw_th,
 
 		(ParamInt<px4::params::RC_CHAN_CNT>) _param_rc_chan_cnt
 	)
